@@ -1,38 +1,35 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, Route, Routes, Navigate, useLocation } from 'react-router-dom';
-import { supabase } from './supabase';
+import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { useAuthSession } from './hooks/useAuthSession';
+import { signIn, signOut } from './services/auth';
+import { getProductsByStore } from './services/products';
+import { createSale, getTransactionsByStore } from './services/sales';
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
     maximumFractionDigits: 0,
-  }).format(value || 0);
+  }).format(Number(value || 0));
 }
 
-function LoginPage({ onLogin }) {
+function LoginPage({ onReady }) {
   const [email, setEmail] = useState('owner@kajou.app');
   const [password, setPassword] = useState('password123');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (event) => {
+  async function handleLogin(event) {
     event.preventDefault();
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-      onLogin(data.session);
+      await signIn(email, password);
+      onReady();
     } catch (error) {
       alert(error.message || 'Login gagal');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
     <div className="auth-shell">
@@ -45,31 +42,21 @@ function LoginPage({ onLogin }) {
           </div>
         </div>
 
-        <h1>Masuk ke admin</h1>
-        <p className="light-text">Gunakan akun Supabase Anda untuk mengakses dashboard.</p>
+        <h1>Masuk ke dashboard</h1>
+        <p className="light-text">Gunakan akun Supabase yang sudah dibuat.</p>
 
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleLogin} className="auth-form">
           <label>
             Email
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="owner@kajou.app"
-            />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </label>
 
           <label>
             Password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
 
-          <button type="submit" className="primary-button" disabled={loading}>
+          <button className="primary-button" type="submit" disabled={loading}>
             {loading ? 'Memproses...' : 'Masuk'}
           </button>
         </form>
@@ -82,53 +69,32 @@ function DashboardPage({ session, onLogout }) {
   const [products, setProducts] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const storeUuid = session?.user?.user_metadata?.store_uuid;
 
   useEffect(() => {
-    async function loadData() {
+    async function loadDashboard() {
+      if (!storeUuid) return;
+
       try {
-        setLoading(true);
-
-        const storeUuid = session?.user?.user_metadata?.store_uuid;
-
-        const [productsResult, transactionsResult] = await Promise.all([
-          supabase
-            .from('products')
-            .select('*')
-            .eq('store_uuid', storeUuid)
-            .order('name', { ascending: true }),
-          supabase
-            .from('transactions')
-            .select('*')
-            .eq('store_uuid', storeUuid)
-            .order('created_at', { ascending: false })
-            .limit(8),
+        const [productsData, transactionData] = await Promise.all([
+          getProductsByStore(storeUuid),
+          getTransactionsByStore(storeUuid),
         ]);
 
-        if (productsResult.error) throw productsResult.error;
-        if (transactionsResult.error) throw transactionsResult.error;
-
-        setProducts(productsResult.data || []);
-        setTransactions(transactionsResult.data || []);
+        setProducts(productsData);
+        setTransactions(transactionData);
       } catch (error) {
         console.error(error);
-        alert(error.message || 'Gagal memuat data');
       } finally {
         setLoading(false);
       }
     }
 
-    loadData();
-  }, [session]);
+    loadDashboard();
+  }, [storeUuid]);
 
-  const totalRevenue = useMemo(
-    () => transactions.reduce((sum, tx) => sum + Number(tx.total || 0), 0),
-    [transactions],
-  );
-
-  const totalStock = useMemo(
-    () => products.reduce((sum, item) => sum + Number(item.stock || 0), 0),
-    [products],
-  );
+  const revenue = transactions.reduce((sum, tx) => sum + Number(tx.total || 0), 0);
+  const stockTotal = products.reduce((sum, item) => sum + Number(item.stock || 0), 0);
 
   return (
     <div className="dashboard-shell">
@@ -142,10 +108,10 @@ function DashboardPage({ session, onLogout }) {
         </div>
 
         <nav className="nav-menu">
-          <Link to="/" className="nav-item active">Dashboard</Link>
-          <Link to="/products" className="nav-item">Produk</Link>
-          <Link to="/transactions" className="nav-item">Transaksi</Link>
-          <Link to="/report" className="nav-item">Laporan</Link>
+          <Link className="nav-item active" to="/">Dashboard</Link>
+          <Link className="nav-item" to="/products">Produk</Link>
+          <Link className="nav-item" to="/sales">Penjualan</Link>
+          <Link className="nav-item" to="/reports">Laporan</Link>
         </nav>
 
         <button className="logout-button" onClick={onLogout}>Keluar</button>
@@ -157,7 +123,7 @@ function DashboardPage({ session, onLogout }) {
             <p className="eyebrow">Overview</p>
             <h2>Halo, {session?.user?.email}</h2>
           </div>
-          <div className="store-pill">Toko: {session?.user?.user_metadata?.store_uuid || 'Default'}</div>
+          <div className="store-pill">Toko: {storeUuid || 'Belum ditentukan'}</div>
         </header>
 
         <section className="stats-grid">
@@ -167,11 +133,11 @@ function DashboardPage({ session, onLogout }) {
           </div>
           <div className="stat-card accent-green">
             <span>Stok</span>
-            <strong>{totalStock}</strong>
+            <strong>{stockTotal}</strong>
           </div>
           <div className="stat-card accent-gold">
             <span>Penjualan</span>
-            <strong>{formatCurrency(totalRevenue)}</strong>
+            <strong>{formatCurrency(revenue)}</strong>
           </div>
         </section>
 
@@ -179,7 +145,7 @@ function DashboardPage({ session, onLogout }) {
           <div className="panel">
             <div className="panel-header">
               <h3>Produk</h3>
-              <Link to="/products" className="text-link">Lihat semua</Link>
+              <Link className="text-link" to="/products">Lihat semua</Link>
             </div>
 
             {loading ? (
@@ -210,8 +176,8 @@ function DashboardPage({ session, onLogout }) {
 
           <div className="panel">
             <div className="panel-header">
-              <h3>Transaksi Terbaru</h3>
-              <Link to="/transactions" className="text-link">Lihat semua</Link>
+              <h3>Transaksi terbaru</h3>
+              <Link className="text-link" to="/sales">Lihat semua</Link>
             </div>
 
             <table className="table">
@@ -228,11 +194,11 @@ function DashboardPage({ session, onLogout }) {
                     <td colSpan="3" className="muted-text">Belum ada transaksi</td>
                   </tr>
                 ) : (
-                  transactions.map((tx) => (
-                    <tr key={tx.id}>
-                      <td>{tx.product_id || 'Produk'}</td>
-                      <td>{tx.qty}</td>
-                      <td>{formatCurrency(tx.total)}</td>
+                  transactions.slice(0, 8).map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.product_id}</td>
+                      <td>{item.qty}</td>
+                      <td>{formatCurrency(item.total)}</td>
                     </tr>
                   ))
                 )}
@@ -248,18 +214,15 @@ function DashboardPage({ session, onLogout }) {
 function ProductsPage({ session }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const storeUuid = session?.user?.user_metadata?.store_uuid;
 
   useEffect(() => {
-    async function loadProducts() {
-      try {
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .eq('store_uuid', session?.user?.user_metadata?.store_uuid)
-          .order('name', { ascending: true });
+    if (!storeUuid) return;
 
-        if (error) throw error;
-        setProducts(data || []);
+    async function load() {
+      try {
+        const data = await getProductsByStore(storeUuid);
+        setProducts(data);
       } catch (error) {
         console.error(error);
       } finally {
@@ -267,14 +230,14 @@ function ProductsPage({ session }) {
       }
     }
 
-    if (session) loadProducts();
-  }, [session]);
+    load();
+  }, [storeUuid]);
 
   return (
     <div className="page-shell">
       <div className="page-header">
         <h2>Produk</h2>
-        <Link to="/" className="text-link">Kembali ke dashboard</Link>
+        <Link className="text-link" to="/">Kembali ke dashboard</Link>
       </div>
 
       <div className="panel">
@@ -307,21 +270,27 @@ function ProductsPage({ session }) {
   );
 }
 
-function TransactionsPage({ session }) {
+function SalesPage({ session }) {
+  const [products, setProducts] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [qty, setQty] = useState(1);
+  const [paymentMethod, setPaymentMethod] = useState('cash');
   const [loading, setLoading] = useState(true);
+  const storeUuid = session?.user?.user_metadata?.store_uuid;
 
   useEffect(() => {
-    async function loadTransactions() {
+    async function load() {
+      if (!storeUuid) return;
       try {
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('store_uuid', session?.user?.user_metadata?.store_uuid)
-          .order('created_at', { ascending: false });
+        const [productData, txData] = await Promise.all([
+          getProductsByStore(storeUuid),
+          getTransactionsByStore(storeUuid),
+        ]);
 
-        if (error) throw error;
-        setTransactions(data || []);
+        setProducts(productData);
+        setTransactions(txData);
+        if (productData[0]) setSelectedProductId(productData[0].id);
       } catch (error) {
         console.error(error);
       } finally {
@@ -329,101 +298,151 @@ function TransactionsPage({ session }) {
       }
     }
 
-    if (session) loadTransactions();
-  }, [session]);
+    load();
+  }, [storeUuid]);
+
+  async function handleSale(event) {
+    event.preventDefault();
+    if (!selectedProductId || qty < 1) {
+      alert('Harap pilih produk dan jumlah yang valid');
+      return;
+    }
+
+    try {
+      const result = await createSale({
+        storeUuid,
+        productId: selectedProductId,
+        qty: Number(qty),
+        paymentMethod,
+      });
+
+      alert(`Transaksi berhasil: ${JSON.stringify(result)}`);
+      const refreshed = await Promise.all([
+        getProductsByStore(storeUuid),
+        getTransactionsByStore(storeUuid),
+      ]);
+      setProducts(refreshed[0]);
+      setTransactions(refreshed[1]);
+    } catch (error) {
+      alert(error.message || 'Transaksi gagal');
+    }
+  }
 
   return (
     <div className="page-shell">
       <div className="page-header">
-        <h2>Transaksi</h2>
-        <Link to="/" className="text-link">Kembali ke dashboard</Link>
+        <h2>Penjualan</h2>
+        <Link className="text-link" to="/">Kembali ke dashboard</Link>
       </div>
 
-      <div className="panel">
-        {loading ? (
-          <p>Memuat transaksi...</p>
-        ) : (
+      <div className="panel-grid">
+        <div className="panel">
+          <h3>Transaksi baru</h3>
+          {loading ? (
+            <p>Memuat data...</p>
+          ) : (
+            <form onSubmit={handleSale} className="stacked-form">
+              <label>
+                Produk
+                <select value={selectedProductId} onChange={(e) => setSelectedProductId(e.target.value)}>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>{product.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Jumlah
+                <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
+              </label>
+
+              <label>
+                Metode Pembayaran
+                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                  <option value="cash">Cash</option>
+                  <option value="qris">QRIS</option>
+                  <option value="transfer">Transfer</option>
+                </select>
+              </label>
+
+              <button type="submit" className="primary-button">Proses Penjualan</button>
+            </form>
+          )}
+        </div>
+
+        <div className="panel">
+          <h3>Riwayat transaksi</h3>
           <table className="table">
             <thead>
               <tr>
-                <th>ID</th>
                 <th>Qty</th>
                 <th>Total</th>
                 <th>Waktu</th>
               </tr>
             </thead>
             <tbody>
-              {transactions.map((tx) => (
-                <tr key={tx.id}>
-                  <td>{tx.product_id}</td>
-                  <td>{tx.qty}</td>
-                  <td>{formatCurrency(tx.total)}</td>
-                  <td>{new Date(tx.created_at).toLocaleString('id-ID')}</td>
+              {transactions.length === 0 ? (
+                <tr>
+                  <td colSpan="3" className="muted-text">Belum ada transaksi</td>
                 </tr>
-              ))}
+              ) : (
+                transactions.slice(0, 10).map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.qty}</td>
+                    <td>{formatCurrency(item.total)}</td>
+                    <td>{new Date(item.created_at).toLocaleString('id-ID')}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
-        )}
+        </div>
       </div>
     </div>
   );
 }
 
-function ReportPage() {
+function ReportsPage() {
   return (
     <div className="page-shell">
       <div className="page-header">
         <h2>Laporan</h2>
-        <Link to="/" className="text-link">Kembali ke dashboard</Link>
+        <Link className="text-link" to="/">Kembali ke dashboard</Link>
       </div>
 
       <div className="panel">
-        <p className="muted-text">Halaman laporan akan dikembangkan untuk harian, mingguan, dan bulanan.</p>
+        <p className="muted-text">
+          Untuk laporan harian, mingguan, dan bulanan, data akan dibuat dari file JSON yang terenkripsi pada layer report generator.
+        </p>
       </div>
     </div>
   );
 }
 
 export default function App() {
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function initSession() {
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
-      setLoading(false);
-    }
-
-    initSession();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-    });
-
-    return () => authListener.subscription.unsubscribe();
-  }, []);
+  const { session, loading } = useAuthSession();
 
   if (loading) {
     return <div className="page-loading">Loading Kajou...</div>;
   }
 
   if (!session) {
-    return <LoginPage onLogin={setSession} />;
+    return <LoginPage onReady={() => window.location.reload()} />;
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setSession(null);
-  };
+  async function handleLogout() {
+    await signOut();
+    window.location.reload();
+  }
 
   return (
     <Routes>
       <Route path="/" element={<DashboardPage session={session} onLogout={handleLogout} />} />
       <Route path="/products" element={<ProductsPage session={session} />} />
-      <Route path="/transactions" element={<TransactionsPage session={session} />} />
-      <Route path="/report" element={<ReportPage />} />
+      <Route path="/sales" element={<SalesPage session={session} />} />
+      <Route path="/reports" element={<ReportsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
+
