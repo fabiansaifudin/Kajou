@@ -1,377 +1,473 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+import { useEffect, useState } from 'react';
+import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { useAuthSession } from './hooks/useAuthSession';
+import { signIn, signOut } from './services/auth';
+import { createProduct, getProductsByStore } from './services/products';
+import { getTransactionsByStore } from './services/sales';
 
-:root {
-  --bg: #0f172a;
-  --bg-soft: #f8fafc;
-  --panel: #ffffff;
-  --panel-muted: #f1f5f9;
-  --border: #e2e8f0;
-  --nav: #111827;
-  --primary: #2563eb;
-  --primary-soft: #dbeafe;
-  --success: #16a34a;
-  --success-soft: #dcfce7;
-  --gold: #f59e0b;
-  --gold-soft: #fef3c7;
-  --text: #0f172a;
-  --muted: #64748b;
-  --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+function formatCurrency(value) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
 }
 
-* {
-  box-sizing: border-box;
-}
+function LoginPage({ onReady }) {
+  const [email, setEmail] = useState('owner@kajou.app');
+  const [password, setPassword] = useState('password123');
+  const [loading, setLoading] = useState(false);
 
-html, body, #root {
-  margin: 0;
-  min-height: 100%;
-  font-family: 'Inter', sans-serif;
-  background: var(--bg-soft);
-  color: var(--text);
-}
+  async function handleLogin(event) {
+    event.preventDefault();
+    setLoading(true);
 
-body {
-  min-height: 100vh;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-button, input, select {
-  font: inherit;
-}
-
-.auth-shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #eff6ff 0%, #e2e8f0 100%);
-}
-
-.auth-card {
-  width: min(420px, calc(100vw - 32px));
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 24px;
-  box-shadow: var(--shadow);
-  padding: 28px;
-  backdrop-filter: blur(10px);
-}
-
-.brand-block {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 20px;
-}
-
-.brand-mark {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  border-radius: 14px;
-  background: linear-gradient(135deg, var(--primary), #1d4ed8);
-  color: white;
-  font-size: 1.5rem;
-  font-weight: 800;
-}
-
-.brand-name {
-  font-size: 1.35rem;
-  font-weight: 800;
-}
-
-.brand-subtitle {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-.auth-card h1 {
-  margin: 0;
-  font-size: 1.7rem;
-}
-
-.light-text {
-  color: var(--muted);
-  margin: 10px 0 20px;
-}
-
-.auth-form,
-.stacked-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.auth-form label,
-.stacked-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.auth-form input,
-.stacked-form input,
-.stacked-form select,
-.auth-form select {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 14px;
-  font-size: 0.98rem;
-  background: #fff;
-}
-
-.primary-button,
-.logout-button {
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  font-weight: 700;
-  transition: transform 0.15s ease, opacity 0.2s ease;
-}
-
-.primary-button {
-  padding: 12px 16px;
-  background: linear-gradient(135deg, var(--primary), #1d4ed8);
-  color: white;
-}
-
-.primary-button:hover,
-.logout-button:hover {
-  transform: translateY(-1px);
-}
-
-.dashboard-shell {
-  min-height: 100vh;
-  display: flex;
-  background: var(--bg-soft);
-}
-
-.sidebar {
-  width: 240px;
-  background: var(--nav);
-  color: #f8fafc;
-  padding: 22px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.sidebar-brand {
-  padding: 10px 6px 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-}
-
-.nav-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.nav-item {
-  display: block;
-  padding: 12px 14px;
-  border-radius: 10px;
-  color: #dbeafe;
-  opacity: 0.8;
-}
-
-.nav-item.active,
-.nav-item:hover {
-  background: rgba(59, 130, 246, 0.18);
-  opacity: 1;
-}
-
-.logout-button {
-  margin-top: auto;
-  padding: 10px 12px;
-  background: rgba(239, 68, 68, 0.12);
-  color: #fecaca;
-}
-
-.content-area {
-  flex: 1;
-  padding: 28px;
-}
-
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.eyebrow {
-  margin: 0 0 8px;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.topbar h2 {
-  margin: 0;
-  font-size: clamp(1.6rem, 2vw, 2.2rem);
-}
-
-.store-pill {
-  padding: 10px 14px;
-  background: #e0f2fe;
-  color: #0f172a;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 18px;
-  margin-bottom: 28px;
-}
-
-.stat-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 20px 18px;
-  box-shadow: var(--shadow);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.stat-card span {
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.stat-card strong {
-  font-size: 1.5rem;
-}
-
-.accent-blue {
-  background: linear-gradient(135deg, #eff6ff, #ffffff);
-}
-
-.accent-green {
-  background: linear-gradient(135deg, #ecfdf5, #ffffff);
-}
-
-.accent-gold {
-  background: linear-gradient(135deg, #fffbeb, #ffffff);
-}
-
-.panel-grid {
-  display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  gap: 20px;
-}
-
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-  padding: 20px;
-}
-
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.panel-header h3,
-.panel h3 {
-  margin-top: 0;
-  margin-bottom: 16px;
-}
-
-.text-link {
-  color: var(--primary);
-  font-weight: 600;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th,
-.table td {
-  padding: 12px 10px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-
-.table th {
-  color: var(--muted);
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.muted-text {
-  color: var(--muted);
-}
-
-.page-shell {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 40px 20px;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.page-header h2 {
-  margin: 0;
-  font-size: 2rem;
-}
-
-.page-loading {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-@media (max-width: 860px) {
-  .dashboard-shell {
-    flex-direction: column;
+    try {
+      await signIn(email, password);
+      onReady();
+    } catch (error) {
+      alert(error.message || 'Login gagal');
+    } finally {
+      setLoading(false);
+    }
   }
 
-  .sidebar {
-    width: 100%;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  return (
+    <div className="auth-shell">
+      <div className="auth-card">
+        <div className="brand-block">
+          <div className="brand-mark">K</div>
+          <div>
+            <div className="brand-name">Kajou</div>
+            <div className="brand-subtitle">Kasir Jualan Offline Unggul</div>
+          </div>
+        </div>
+
+        <h1>Masuk ke dashboard</h1>
+        <p className="light-text">Gunakan akun Supabase yang sudah dibuat.</p>
+
+        <form onSubmit={handleLogin} className="auth-form">
+          <label>
+            Email
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </label>
+
+          <label>
+            Password
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </label>
+
+          <button className="primary-button" type="submit" disabled={loading}>
+            {loading ? 'Memproses...' : 'Masuk'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DashboardPage({ session, onLogout }) {
+  const [products, setProducts] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const storeUuid = session?.user?.user_metadata?.store_uuid;
+
+  useEffect(() => {
+    async function loadDashboard() {
+      if (!storeUuid) return;
+
+      try {
+        const [productsData, transactionData] = await Promise.all([
+          getProductsByStore(storeUuid),
+          getTransactionsByStore(storeUuid),
+        ]);
+
+        setProducts(productsData);
+        setTransactions(transactionData);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDashboard();
+  }, [storeUuid]);
+
+  const revenue = transactions.reduce((sum, tx) => sum + Number(tx.total || 0), 0);
+  const stockTotal = products.reduce((sum, item) => sum + Number(item.stock || 0), 0);
+
+  return (
+    <div className="dashboard-shell">
+      <aside className="sidebar">
+        <div className="brand-block sidebar-brand">
+          <div className="brand-mark">K</div>
+          <div>
+            <div className="brand-name">Kajou</div>
+            <div className="brand-subtitle">POS</div>
+          </div>
+        </div>
+
+        <nav className="nav-menu">
+          <Link className="nav-item active" to="/">Dashboard</Link>
+          <Link className="nav-item" to="/products">Produk</Link>
+          <Link className="nav-item" to="/reports">Laporan</Link>
+        </nav>
+
+        <button className="logout-button" onClick={onLogout}>Keluar</button>
+      </aside>
+
+      <main className="content-area">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">Overview</p>
+            <h2>Halo, {session?.user?.email}</h2>
+          </div>
+          <div className="store-pill">Toko: {storeUuid || 'Belum ditentukan'}</div>
+        </header>
+
+        <section className="stats-grid">
+          <div className="stat-card accent-blue">
+            <span>Produk</span>
+            <strong>{products.length}</strong>
+          </div>
+          <div className="stat-card accent-green">
+            <span>Stok</span>
+            <strong>{stockTotal}</strong>
+          </div>
+          <div className="stat-card accent-gold">
+            <span>Penjualan</span>
+            <strong>{formatCurrency(revenue)}</strong>
+          </div>
+        </section>
+
+        <section className="panel-grid">
+          <div className="panel">
+            <div className="panel-header">
+              <h3>Produk</h3>
+              <Link className="text-link" to="/products">Lihat semua</Link>
+            </div>
+
+            {loading ? (
+              <p>Memuat produk...</p>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Nama</th>
+                    <th>SKU</th>
+                    <th>Harga</th>
+                    <th>Stok</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.slice(0, 6).map((product) => (
+                    <tr key={product.id}>
+                      <td>{product.name}</td>
+                      <td>{product.sku}</td>
+                      <td>{formatCurrency(product.price)}</td>
+                      <td>{product.stock}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="panel">
+            <div className="panel-header">
+              <h3>Transaksi terbaru</h3>
+              <Link className="text-link" to="/reports">Lihat semua</Link>
+            </div>
+
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Produk</th>
+                  <th>Qty</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan="3" className="muted-text">Belum ada transaksi</td>
+                  </tr>
+                ) : (
+                  transactions.slice(0, 8).map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.product_id}</td>
+                      <td>{item.qty}</td>
+                      <td>{formatCurrency(item.total)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function ProductsPage({ session }) {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({
+    sku: '',
+    name: '',
+    price: '',
+    stock: '',
+    category: '',
+  });
+
+  const storeUuid = session?.user?.user_metadata?.store_uuid;
+
+  async function loadProducts() {
+    if (!storeUuid) return;
+    try {
+      const data = await getProductsByStore(storeUuid);
+      setProducts(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  .content-area {
-    padding: 20px 16px 28px;
+  useEffect(() => {
+    loadProducts();
+  }, [storeUuid]);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+
+    if (!form.sku || !form.name || !form.price || !form.stock) {
+      alert('Semua field wajib diisi');
+      return;
+    }
+
+    try {
+      await createProduct({
+        store_uuid: storeUuid,
+        sku: form.sku,
+        name: form.name,
+        price: Number(form.price),
+        stock: Number(form.stock),
+        category: form.category,
+        is_active: true,
+      });
+
+      setForm({ sku: '', name: '', price: '', stock: '', category: '' });
+      await loadProducts();
+    } catch (error) {
+      alert(error.message || 'Gagal menambah produk');
+    }
   }
 
-  .panel-grid,
-  .stats-grid {
-    grid-template-columns: 1fr;
+  return (
+    <div className="page-shell">
+      <div className="page-header">
+        <h2>Produk</h2>
+        <Link className="text-link" to="/">Kembali ke dashboard</Link>
+      </div>
+
+      <div className="panel-grid">
+        <div className="panel">
+          <h3>Tambah Produk Baru</h3>
+          <form onSubmit={handleSubmit} className="stacked-form">
+            <label>
+              SKU
+              <input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
+            </label>
+
+            <label>
+              Nama Produk
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </label>
+
+            <label>
+              Kategori
+              <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+            </label>
+
+            <div className="two-col-grid">
+              <label>
+                Harga
+                <input
+                  type="number"
+                  min="0"
+                  value={form.price}
+                  onChange={(e) => setForm({ ...form, price: e.target.value })}
+                />
+              </label>
+
+              <label>
+                Stok
+                <input
+                  type="number"
+                  min="0"
+                  value={form.stock}
+                  onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                />
+              </label>
+            </div>
+
+            <button type="submit" className="primary-button">Simpan Produk</button>
+          </form>
+        </div>
+
+        <div className="panel">
+          {loading ? (
+            <p>Memuat produk...</p>
+          ) : (
+            <>
+              <h3>Daftar Produk</h3>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Nama</th>
+                    <th>SKU</th>
+                    <th>Harga</th>
+                    <th>Stok</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr key={product.id}>
+                      <td>{product.name}</td>
+                      <td>{product.sku}</td>
+                      <td>{formatCurrency(product.price)}</td>
+                      <td>{product.stock}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReportsPage({ session }) {
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const storeUuid = session?.user?.user_metadata?.store_uuid;
+
+  useEffect(() => {
+    async function loadReports() {
+      if (!storeUuid) return;
+
+      try {
+        const data = await getTransactionsByStore(storeUuid);
+        setTransactions(data);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadReports();
+  }, [storeUuid]);
+
+  const summary = transactions.reduce((acc, item) => {
+    const date = new Date(item.created_at).toISOString().slice(0, 10);
+    if (!acc[date]) {
+      acc[date] = { date, total: 0, count: 0 };
+    }
+
+    acc[date].total += Number(item.total || 0);
+    acc[date].count += 1;
+
+    return acc;
+  }, {});
+
+  const rows = Object.values(summary).sort((a, b) => b.date.localeCompare(a.date));
+  const totalRevenue = rows.reduce((sum, row) => sum + Number(row.total || 0), 0);
+  const totalTransactions = rows.reduce((sum, row) => sum + Number(row.count || 0), 0);
+
+  return (
+    <div className="page-shell">
+      <div className="page-header">
+        <h2>Laporan Harian</h2>
+        <Link className="text-link" to="/">Kembali ke dashboard</Link>
+      </div>
+
+      <section className="stats-grid">
+        <div className="stat-card accent-blue">
+          <span>Total Revenue</span>
+          <strong>{formatCurrency(totalRevenue)}</strong>
+        </div>
+        <div className="stat-card accent-green">
+          <span>Jumlah Transaksi</span>
+          <strong>{totalTransactions}</strong>
+        </div>
+        <div className="stat-card accent-gold">
+          <span>Rata-rata per Hari</span>
+          <strong>{formatCurrency(totalRevenue / (rows.length || 1))}</strong>
+        </div>
+      </section>
+
+      <div className="panel">
+        {loading ? (
+          <p>Memuat laporan...</p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Tanggal</th>
+                <th>Jumlah Transaksi</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan="3" className="muted-text">Belum ada data laporan</td>
+                </tr>
+              ) : (
+                rows.map((row) => (
+                  <tr key={row.date}>
+                    <td>{new Date(row.date).toLocaleDateString('id-ID')}</td>
+                    <td>{row.count}</td>
+                    <td>{formatCurrency(row.total)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const { session, loading } = useAuthSession();
+
+  if (loading) {
+    return <div className="page-loading">Loading Kajou...</div>;
   }
 
-  .topbar,
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
+  if (!session) {
+    return <LoginPage onReady={() => window.location.reload()} />;
   }
+
+  async function handleLogout() {
+    await signOut();
+    window.location.reload();
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<DashboardPage session={session} onLogout={handleLogout} />} />
+      <Route path="/products" element={<ProductsPage session={session} />} />
+      <Route path="/reports" element={<ReportsPage session={session} />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }
